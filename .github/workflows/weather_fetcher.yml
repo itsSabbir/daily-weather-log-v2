@@ -1,97 +1,160 @@
 # .github/workflows/weather_fetcher.yml
-name: Fetch Daily Weather Data
 
+# Name of the GitHub Actions workflow. This is displayed on the Actions tab of your repository.
+name: Fetch Hourly Weather Data
+
+# Controls when the workflow will run.
 on:
+  # 'schedule' allows you to trigger the workflow at scheduled times using cron syntax.
   schedule:
-    - cron: '15 1 * * *' # Example: Run at 01:15 UTC daily
-  workflow_dispatch: # Allows manual triggering
+    # Cron syntax: minute hour day(month) month day(week)
+    # '15 * * * *' means "at 15 minutes past every hour, every day, every month, every day of the week".
+    # Example: 01:15, 02:15, 03:15 UTC, etc.
+    - cron: '15 * * * *'
+
+  # 'workflow_dispatch' allows you to manually trigger the workflow from the Actions tab.
+  # Useful for testing or ad-hoc runs.
+  workflow_dispatch:
+
+  # 'push' triggers the workflow on push events to specified branches.
+  # Useful for testing changes to the workflow or script itself.
   push:
     branches:
       - main # Or your default branch (e.g., master)
 
+# Defines one or more jobs that the workflow will execute.
+# Jobs run in parallel by default, but can be configured to run sequentially.
 jobs:
+  # Name of the job (you can choose any descriptive name).
   fetch-and-commit-weather:
+    # Specifies the type of runner the job will run on.
+    # 'ubuntu-latest' uses the latest stable version of Ubuntu provided by GitHub.
     runs-on: ubuntu-latest
+
+    # Defines permissions granted to the GITHUB_TOKEN for this job.
+    # The 'contents: write' permission is necessary for the action to commit
+    # changes back to the repository (e.g., the updated weather_data.csv).
     permissions:
-        contents: write # Necessary for the GITHUB_TOKEN to push to the repo
+      contents: write
 
+    # 'steps' are a sequence of tasks that will be executed as part of the job.
     steps:
+      # Step 1: Checkout repository
+      # This action checks out your repository onto the runner,
+      # allowing the workflow to access your script (fetch_weather.py) and other files.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Uses version 4 of the checkout action
 
+      # Step 2: Set up Python
+      # This action sets up a Python environment on the runner.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5 # Uses version 5 of the setup-python action
         with:
-          python-version: '3.11' # Or your preferred Python 3.x version
-          # Optional: If you create a requirements.txt, uncomment the cache line
+          python-version: '3.11' # Specifies the Python version to use.
+          # Optional: Caching pip dependencies can speed up subsequent runs.
+          # To use caching, you would typically have a requirements.txt file.
           # cache: 'pip'
-          # cache-dependency-path: 'requirements.txt' # Specify if not in root
+          # cache-dependency-path: 'requirements.txt' # Path to your requirements file
 
+      # Step 3: Install dependencies
+      # This step installs the Python packages required by your script.
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests # If not using requirements.txt
-          # If using requirements.txt:
+          python -m pip install --upgrade pip # Upgrade pip to the latest version
+          pip install requests                 # Install the 'requests' library
+          # If you were using a requirements.txt file, you would uncomment the following line:
           # pip install -r requirements.txt
 
+      # Step 4: Fetch and write weather data
+      # This step executes your Python script.
+      # The script is expected to exit with code 0 on success and non-zero on failure.
+      # If the script exits with a non-zero code, this step will fail, and by default, the job will fail.
       - name: Fetch and write weather data
-        id: fetch_data
+        id: fetch_data # Gives this step an ID so its outputs can be referenced (not used here, but good practice)
         run: python fetch_weather.py
-        # This step will now fail if fetch_weather.py exits with a non-zero code
+        # The Python script (fetch_weather.py) now uses sys.exit(0) for success
+        # and sys.exit(1) for failure, which GitHub Actions automatically interprets.
 
-      # If fetch_data succeeded, CSV file should exist or be updated
+      # Step 5: Check for file changes in weather_data.csv
+      # This step determines if the fetch_weather.py script actually modified weather_data.csv.
+      # It's important because we only want to commit if there are actual content changes.
       - name: Check for file changes
-        id: git_diff
+        id: git_diff # Give this step an ID to reference its outputs later.
         run: |
+          # 'git diff --quiet --exit-code weather_data.csv' checks for changes.
+          # --quiet: Suppresses output.
+          # --exit-code: Exits with 0 if no differences, 1 if differences are found.
+          # We want the step to continue even if differences are found (exit code 1),
+          # so 'continue-on-error: true' is used below.
           if git diff --quiet --exit-code weather_data.csv; then
             echo "No content changes in weather_data.csv."
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> $GITHUB_OUTPUT # Set output 'changed' to 'false'
           else
             echo "Content changes detected in weather_data.csv."
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed=true" >> $GITHUB_OUTPUT  # Set output 'changed' to 'true'
           fi
-        continue-on-error: true # Important: git diff exits 1 if changes found
+        # `continue-on-error: true` is crucial here. If `git diff` finds changes,
+        # it exits with 1. Without this, the step (and job) would fail if changes exist.
+        # We want the workflow to continue to the commit step if changes are found.
+        continue-on-error: true
 
+      # Step 6: Configure Git User for commit
+      # This step configures the Git user name and email for the commits made by the workflow.
+      # It only runs if the 'git_diff' step detected changes.
       - name: Configure Git User for commit
-        if: steps.git_diff.outputs.changed == 'true'
+        if: steps.git_diff.outputs.changed == 'true' # Conditional execution
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com" # Standard GitHub Actions bot email
           echo "Git user configured for commit."
 
+      # Step 7: Commit and push if changes exist
+      # This step stages, commits, and pushes the weather_data.csv file if changes were detected.
       - name: Commit and push if changes exist
-        if: steps.git_diff.outputs.changed == 'true'
+        if: steps.git_diff.outputs.changed == 'true' # Conditional execution
         run: |
           echo "Attempting to add, commit, and push weather_data.csv."
-          git add weather_data.csv
-          
-          # Ensure there are staged changes before attempting to commit
+          git add weather_data.csv # Stage the changed file
+
+          # This is an extra safety check. 'git diff --staged --quiet' checks if there are
+          # any *actual content changes* staged for commit. This can be useful if, for example,
+          # only file metadata (like permissions on some systems, though unlikely here) changed,
+          # or if 'git add' was run but there were no real differences to stage.
+          # It helps prevent empty commits.
           if git diff --staged --quiet; then
-            echo "No actual changes staged for commit (e.g., only file mode changed). Skipping commit."
-            # We need to ensure 'changed' flag is respected, maybe change 'changed' to false?
-            # Or better, the diff should reflect content. This is a safety.
+            echo "No actual content changes staged for commit after 'git add'. This might indicate only metadata changes or an unexpected state. Skipping commit."
           else
+            # Create a commit message with a dynamic timestamp.
             COMMIT_TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
             git commit -m "Automated weather data update: ${COMMIT_TIMESTAMP}"
-            echo "Commit created. Attempting push."
-            
-            # Retry logic for push
+            echo "Commit created. Attempting push..."
+
+            # Retry logic for 'git push' to handle transient network issues or brief repository lock contention.
             for i in 1 2 3; do
               echo "Push attempt #$i..."
+              # Attempt to push changes to the remote repository.
+              # The GITHUB_TOKEN (with 'contents: write' permission) is used implicitly for authentication.
               if git push; then
                 echo "Push successful!"
                 break # Exit loop on successful push
               fi
+              # If not the last attempt, wait before retrying.
               if [ $i -lt 3 ]; then
                 echo "Push attempt #$i failed. Retrying in 20 seconds..."
                 sleep 20
               else
-                echo "CRITICAL: All push attempts failed after $i retries."
-                exit 1 # Fail the job if all pushes fail
+                # If all push attempts fail, log a critical error and exit with 1 to fail the job.
+                echo "CRITICAL: All push attempts failed after $i retries. Manual intervention may be required."
+                exit 1
               fi
             done
           fi
+          echo "Commit and push process completed."
 
+      # Step 8: Report if no changes were made
+      # This step runs if the 'git_diff' step did *not* detect changes.
+      # It's useful for logging and understanding workflow behavior.
       - name: No changes to commit
+        # Runs if the 'changed' output from 'git_diff' step is NOT 'true'
         if: steps.git_diff.outputs.changed != 'true'
-        run: echo "No file content changes were detected by git_diff. Nothing to commit."
+        run: echo "No file content changes were detected by git_diff for weather_data.csv. Nothing to commit."
