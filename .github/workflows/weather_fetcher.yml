@@ -1,0 +1,97 @@
+# .github/workflows/weather_fetcher.yml
+name: Fetch Daily Weather Data
+
+on:
+  schedule:
+    - cron: '15 1 * * *' # Example: Run at 01:15 UTC daily
+  workflow_dispatch: # Allows manual triggering
+  push:
+    branches:
+      - main # Or your default branch (e.g., master)
+
+jobs:
+  fetch-and-commit-weather:
+    runs-on: ubuntu-latest
+    permissions:
+        contents: write # Necessary for the GITHUB_TOKEN to push to the repo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Or your preferred Python 3.x version
+          # Optional: If you create a requirements.txt, uncomment the cache line
+          # cache: 'pip'
+          # cache-dependency-path: 'requirements.txt' # Specify if not in root
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests # If not using requirements.txt
+          # If using requirements.txt:
+          # pip install -r requirements.txt
+
+      - name: Fetch and write weather data
+        id: fetch_data
+        run: python fetch_weather.py
+        # This step will now fail if fetch_weather.py exits with a non-zero code
+
+      # If fetch_data succeeded, CSV file should exist or be updated
+      - name: Check for file changes
+        id: git_diff
+        run: |
+          if git diff --quiet --exit-code weather_data.csv; then
+            echo "No content changes in weather_data.csv."
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Content changes detected in weather_data.csv."
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true # Important: git diff exits 1 if changes found
+
+      - name: Configure Git User for commit
+        if: steps.git_diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "Git user configured for commit."
+
+      - name: Commit and push if changes exist
+        if: steps.git_diff.outputs.changed == 'true'
+        run: |
+          echo "Attempting to add, commit, and push weather_data.csv."
+          git add weather_data.csv
+          
+          # Ensure there are staged changes before attempting to commit
+          if git diff --staged --quiet; then
+            echo "No actual changes staged for commit (e.g., only file mode changed). Skipping commit."
+            # We need to ensure 'changed' flag is respected, maybe change 'changed' to false?
+            # Or better, the diff should reflect content. This is a safety.
+          else
+            COMMIT_TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            git commit -m "Automated weather data update: ${COMMIT_TIMESTAMP}"
+            echo "Commit created. Attempting push."
+            
+            # Retry logic for push
+            for i in 1 2 3; do
+              echo "Push attempt #$i..."
+              if git push; then
+                echo "Push successful!"
+                break # Exit loop on successful push
+              fi
+              if [ $i -lt 3 ]; then
+                echo "Push attempt #$i failed. Retrying in 20 seconds..."
+                sleep 20
+              else
+                echo "CRITICAL: All push attempts failed after $i retries."
+                exit 1 # Fail the job if all pushes fail
+              fi
+            done
+          fi
+
+      - name: No changes to commit
+        if: steps.git_diff.outputs.changed != 'true'
+        run: echo "No file content changes were detected by git_diff. Nothing to commit."

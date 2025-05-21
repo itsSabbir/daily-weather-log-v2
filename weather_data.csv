@@ -1,0 +1,3 @@
+fetch_timestamp_utc,api_reported_time_utc,temperature_celsius,windspeed_kmh,weathercode,latitude,longitude
+2025-05-19T18:59:13+00:00,2025-05-19T18:45,14.9,15.9,0,43.646603,-79.38272
+2025-05-19T19:00:50+00:00,2025-05-19T19:00,15.1,15.8,0,43.646603,-79.38272
