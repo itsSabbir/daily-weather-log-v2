@@ -166,23 +166,24 @@ def append_record_to_csv(record: Dict[str, Any], filepath: str = CSV_FILEPATH, f
     """
     record_type_info = record.get('record_type', 'unknown type')
     logging.info(f"Attempting to append record (type: {record_type_info}) to CSV: {filepath}")
+    
     try:
-        file_exists_and_has_content = os.path.isfile(filepath) and os.path.getsize(filepath) > 0
-        os.makedirs(os.path.dirname(filepath), exist_ok=True) # Ensure directory exists.
+        # check for file existence must be done *before* opening in append mode,
+        # as append mode ('a') can create the file instantly on some systems.
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        file_exists = os.path.isfile(filepath)
         
         with open(filepath, "a", newline="", encoding="utf-8") as csvfile:
-            # `restval=''` ensures that if a field from `fieldnames` is missing in `record`,
-            # an empty string is written for that cell, maintaining CSV structure.
-            # `extrasaction='raise'` will cause an error if `record` has keys not in `fieldnames`.
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='raise', restval='')
-            
-            if not file_exists_and_has_content:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore', restval='')
+
+            # If the file did not exist before we opened it, write the header.
+            # This is more robust than checking size.
+            if not file_exists:
                 writer.writeheader()
-                logging.info(f"Written CSV header to new or empty file: {filepath}")
-            
-            # Ensure the record only contains keys defined in fieldnames or prepare it.
-            # This prepares a row dictionary ensuring all keys from fieldnames are present.
-            row_to_write = {fn: record.get(fn, '') for fn in fieldnames} # Default to empty string for missing
+                logging.info(f"Written CSV header to new file: {filepath}")
+
+            # Prepare the row to write, ensuring it aligns with the defined fieldnames.
+            row_to_write = {fn: record.get(fn) for fn in fieldnames}
             writer.writerow(row_to_write)
 
         logging.info(f"Record (type: {record_type_info}) successfully appended to {filepath}")
