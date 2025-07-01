@@ -74,8 +74,7 @@ def get_api_url(latitude: float, longitude: float) -> str:
     Constructs the Open-Meteo API URL for fetching current weather data.
     """
     # Includes latitude, longitude, and 'current_weather=true' parameter.
-    # Note: Double ampersand '&&' in original code, should be single '&'. Corrected.
-    return f"{API_BASE_URL}?latitude={latitude}&longitude={longitude}¤t_weather=true"
+    return f"{API_BASE_URL}?latitude={latitude}&longitude={longitude}&t_weather=true"
 
 
 def fetch_weather_data(latitude: float = DEFAULT_LATITUDE, longitude: float = DEFAULT_LONGITUDE) -> Optional[Dict[str, Any]]:

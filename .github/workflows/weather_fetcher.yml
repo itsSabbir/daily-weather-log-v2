@@ -16,114 +16,88 @@ on:
       - main # Adjust if your default branch is different (e.g., master).
 
 # Concurrency Management:
-# Prevents multiple instances of this workflow from running simultaneously on the same branch.
-# If a new run is triggered while an existing one is active for the same 'group',
-# 'cancel-in-progress: true' ensures the older run is canceled.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }} # Group by workflow name and branch reference.
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  fetch-and-commit-weather: # Original job name preserved.
-    name: Fetch, Process, and Commit Weather Data # Descriptive display name for the job.
-    runs-on: ubuntu-latest # Utilize the latest stable Ubuntu runner.
+  fetch-and-commit-weather:
+    name: Fetch, Process, and Commit Weather Data
+    runs-on: ubuntu-latest
     
-    # Permissions: Define GITHUB_TOKEN scopes required by this job.
     permissions:
-      contents: write # Essential for committing changes back to the repository.
+      contents: write
 
-    # Environment Variables: Centralized configuration for easy management and clarity.
     env:
-      TARGET_FILENAME: "weather_data.csv"        # The CSV file to store weather data.
-      PYTHON_VERSION: '3.11'                     # Specify the Python version to use.
-      # --- Personalized Git Author Details for Commits ---
-      # IMPORTANT: GIT_AUTHOR_EMAIL must be an email address verified on your GitHub account
-      # for the commits to be correctly attributed to your user profile.
+      TARGET_FILENAME: "weather_log.csv"            # CORRECTED: Matches the Python script's output file.
+      PYTHON_SCRIPT_NAME: "fetch_weather_aggregator.py" # Centralize script name
+      PYTHON_VERSION: '3.11'
       GIT_AUTHOR_NAME: "Sabbir Hossain"
       GIT_AUTHOR_EMAIL: "hossain.sabbir17@gmail.com"
 
     steps:
       # --- Step 1: Source Code Checkout ---
-      - name: Checkout repository # Original step name.
-        uses: actions/checkout@v4 # Use latest major version of the checkout action.
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          # 'fetch-depth: 0' fetches the complete Git history.
-          # This is critical for Git operations like 'pull --rebase' to avoid issues
-          # related to shallow clones.
           fetch-depth: 0
 
       # --- Step 1.5 (Optional): Conditional Delay for Push Triggers ---
-      # This step structure and condition is preserved from your original file.
-      # To enable, uncomment the 'if:' line directly below this step's 'name'.
-      - name: Wait 5 minutes (if triggered by push) # Original step name.
+      - name: Wait 5 minutes (if triggered by push)
         # if: github.event_name == 'push' # <<< UNCOMMENT THIS LINE to make the delay PUSH-SPECIFIC
         run: |
-          # The following 'if' block logic is designed to work whether the outer 'if' is commented or not.
-          # If outer 'if' is commented, github.event_name will always be evaluated.
-          # If outer 'if' is active, this inner 'if' provides more granular logging/control if needed,
-          # or simply executes when the outer condition is met.
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.event_name == 'push' }}" == "true" ]]; then # Double check to ensure intent when outer 'if' might be active
-            echo "Workflow was triggered by event: '${{ github.event_name }}'."
-            echo "Conditional delay for push events is ACTIVE. Waiting for 5 minutes (300 seconds)..."
-            sleep 300 # Pauses execution for 300 seconds (5 minutes).
+          # The logic is simplified. This block only runs if the step's 'if' condition is met.
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "Workflow was triggered by a push event. Waiting for 5 minutes (300 seconds)..."
+            sleep 300
             echo "Delay finished. Resuming data fetch operations."
           else
-            # This 'else' branch executes if the outer 'if' is commented out and event is not 'push',
-            # OR if the outer 'if' is active but the event is not 'push'.
-            echo "Optional push-triggered delay is not active for this run (trigger: '${{ github.event_name }}', outer 'if' state: '${{ github.event_name == 'push' }}'). Proceeding immediately."
+            echo "Proceeding without delay (trigger: '${{ github.event_name }}')."
           fi
       # --- END OF OPTIONAL DELAY STEP ---
 
       # --- Step 2: Python Environment Setup ---
-      - name: Set up Python # Original step name, but added version to display.
-        # Display name enhanced for clarity in Actions UI.
-        # Uses env var for Python version.
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          # Enable caching of pip packages to speed up subsequent runs.
           cache: 'pip'
-          # Optional: if using a requirements.txt, specify its path for precise cache invalidation.
-          # cache-dependency-path: 'requirements.txt'
+          # IMPROVEMENT: Use requirements.txt for precise cache invalidation.
+          cache-dependency-path: 'requirements.txt'
 
       # --- Step 3: Install Python Script Dependencies ---
-      - name: Install dependencies # Original step name.
+      - name: Install dependencies from requirements.txt
         run: |
           echo "Upgrading pip package manager..."
           python -m pip install --upgrade pip
-          echo "Installing 'requests' library required by 'fetch_weather.py'..."
-          pip install requests
-          # For projects with multiple dependencies, using a 'requirements.txt' is best practice:
-          # Example: pip install -r requirements.txt
+          echo "Installing dependencies from 'requirements.txt'..."
+          pip install -r requirements.txt
           echo "Python dependencies installation complete."
 
       # --- Step 4: Execute Weather Data Fetch Script ---
-      # Runs 'fetch_weather.py'. Script exits 0 for success, 1 for error.
-      # A non-zero exit (failure) from the script will cause this step and the job to fail.
-      - name: Fetch and write weather data # Original step name.
-        id: fetch_data # Original ID, useful if other steps were to consume outputs.
-        run: python fetch_weather.py
-        # No 'continue-on-error' as script failure is critical.
+      - name: Fetch and write weather data
+        id: fetch_data
+        run: python ${{ env.PYTHON_SCRIPT_NAME }} # CORRECTED: Executes the correct script file.
 
       # --- Step 5: Verify File Changes Post-Script Execution ---
-      # Checks if the Python script modified TARGET_FILENAME. Prevents empty commits.
-      - name: Check for file changes # Original step name.
-        id: git_diff # Original ID, its output 'changed' is used by subsequent steps.
+      - name: Check for file changes
+        id: git_diff
         run: |
           echo "Verifying content changes in '${{ env.TARGET_FILENAME }}'..."
           if git diff --quiet --exit-code ${{ env.TARGET_FILENAME }}; then
-            echo "No content modifications detected in '${{ env.TARGET_FILENAME }}' after script execution."
+            echo "No content modifications detected in '${{ env.TARGET_FILENAME }}'."
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "Content modifications detected in '${{ env.TARGET_FILENAME }}'."
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
-        continue-on-error: true # 'git diff' exits 1 (changes found) - this is desired, not an error.
+        continue-on-error: true # Desired behavior as 'git diff' exits with 1 if changes are found.
 
+      # The rest of the workflow (steps 6, 7, 8) remains the same as it correctly
+      # uses the env variables which have now been corrected.
+      
       # --- Step 6: Configure Git User for Commit Authorship ---
-      # Sets Git author/committer details to your personal GitHub identity.
-      # Runs only if file changes were detected.
-      - name: Configure Git User for commit # Original step name.
+      - name: Configure Git User for commit
         if: steps.git_diff.outputs.changed == 'true'
         run: |
           echo "Configuring Git user for commit authorship as '${{ env.GIT_AUTHOR_NAME }}'..."
@@ -132,28 +106,20 @@ jobs:
           echo "Git commit author set to: ${{ env.GIT_AUTHOR_NAME }} <${{ env.GIT_AUTHOR_EMAIL }}>"
 
       # --- Step 7: Stage, Commit, and Push Changes ---
-      # Handles staging, committing (with personalized author), synchronizing, and pushing.
-      # Runs only if file changes were detected.
-      - name: Commit and push if changes exist # Original step name.
+      - name: Commit and push if changes exist
         if: steps.git_diff.outputs.changed == 'true'
         run: |
           echo "Preparing to stage, commit, and push changes for '${{ env.TARGET_FILENAME }}'..."
-          
-          echo "Staging changes for '${{ env.TARGET_FILENAME }}'..."
           git add ${{ env.TARGET_FILENAME }}
-
-          echo "Verifying staged content to prevent empty commits..."
+          
           if git diff --staged --quiet; then
             echo "WARNING: No actual content changes were staged after 'git add'."
             echo "Skipping commit to prevent an empty or unnecessary commit."
           else
             COMMIT_TIMESTAMP_UTC=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
             COMMIT_MESSAGE="Automated weather data update: ${COMMIT_TIMESTAMP_UTC}"
-            
             echo "Creating Git commit with message: '${COMMIT_MESSAGE}'"
-            # Explicitly set 'Author' and rely on 'git config' for 'Committer'.
             git commit --author="${{ env.GIT_AUTHOR_NAME }} <${{ env.GIT_AUTHOR_EMAIL }}>" -m "${COMMIT_MESSAGE}"
-            echo "Commit created successfully by '${{ env.GIT_AUTHOR_NAME }} <${{ env.GIT_AUTHOR_EMAIL }}>'."
 
             REMOTE_BRANCH_NAME="${{ github.ref_name }}"
             echo "Attempting to synchronize local branch with remote '${REMOTE_BRANCH_NAME}' using 'git pull --rebase'..."
@@ -161,7 +127,7 @@ jobs:
                 echo "CRITICAL FAILURE: 'git pull --rebase origin ${REMOTE_BRANCH_NAME}' failed. Aborting push."
                 exit 1
             fi
-            echo "Synchronization with remote branch '${REMOTE_BRANCH_NAME}' successful."
+            echo "Synchronization successful."
 
             MAX_PUSH_ATTEMPTS=3
             PUSH_RETRY_DELAY_SECONDS=20
@@ -176,19 +142,17 @@ jobs:
                 echo "Push attempt #${attempt} failed. Retrying in ${PUSH_RETRY_DELAY_SECONDS} seconds..."
                 sleep ${PUSH_RETRY_DELAY_SECONDS}
               else
-                echo "CRITICAL FAILURE: All ${MAX_PUSH_ATTEMPTS} push attempts to 'origin/${REMOTE_BRANCH_NAME}' failed. Manual intervention required."
+                echo "CRITICAL FAILURE: All ${MAX_PUSH_ATTEMPTS} push attempts failed. Manual intervention required."
                 exit 1
               fi
             done
-            echo "Commit and push process for '${{ env.TARGET_FILENAME }}' successfully completed."
+            echo "Commit and push process successfully completed."
           fi
-
+          
       # --- Step 8: Report if No Action Was Taken ---
-      # Logs a message if no commit was made due to no file changes being detected.
-      - name: No changes to commit # Original step name.
+      - name: No changes to commit
         if: steps.git_diff.outputs.changed != 'true'
         run: |
-          echo "No content changes were detected in '${{ env.TARGET_FILENAME }}' by the 'Check for file changes' step."
-          echo "Therefore, no Git commit actions were performed for this run."
-          # If 'Fetch and write weather data' step passed, this implies the script
-          # determined no update to the file was necessary.
+          echo "No content changes were detected in '${{ env.TARGET_FILENAME }}'."
+          echo "No Git commit actions were performed for this run."
+          

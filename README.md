@@ -1,8 +1,8 @@
 # Daily Weather Log
 
-![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub Actions CI Status](https://github.com/itsSabbir/daily-weather-log-v2/actions/workflows/main.yml/badge.svg)](https://github.com/itsSabbir/daily-weather-log-v2/actions/workflows/main.yml)
+[![GitHub Actions CI Status](https://github.com/itsSabbir/daily-weather-log-v2/actions/workflows/weather_fetcher.yml/badge.svg)](https://github.com/itsSabbir/daily-weather-log-v2/actions/workflows/weather_fetcher.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 
